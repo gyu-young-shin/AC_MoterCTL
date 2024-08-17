@@ -31,7 +31,7 @@ uint8_t PrePD3 =1 ;
 uint8_t PrePD4 =1 ;
 uint32_t lastDebounceTime = 0;
 
-uint8_t F_MoterBi =3;
+uint8_t F_MoterBi =0;
 
 volatile uint8_t FSpeed =0;
 volatile uint8_t time_delay =0;
@@ -39,7 +39,7 @@ volatile uint8_t time_delay =0;
 uint8_t SpeedInput = 0;
 uint8_t MoterEn = 0;
 uint8_t eeprom_en =0 ;
-uint16_t save_1 = 0x0003;
+uint16_t save_1 = 0x0001;
 
 int main (void)
 {
@@ -50,6 +50,7 @@ int main (void)
 	DDRD &= ~((1 << PD3) | (1 << PD4));
 	DDRD &= ~((1 <<PD5)|(1 <<PD6) |(1 <<PD7));
 	DDRC |= (1 << PC3);
+	
 	DDRC |= (1 << PB1);
 	DDRC |= (1 << PB2);
 	
@@ -60,7 +61,7 @@ int main (void)
 		
 		F_MoterBi = F_MoterBi & 0x03;
 		
-		if(F_MoterBi == 0xFF)
+		if(F_MoterBi >= 0x03)
 		{
 			F_MoterBi= 0;
 			eeprom_write_byte( (uint8_t *)save_1, F_MoterBi); //  write the byte 64 to location 23 of the EEPROM
@@ -157,8 +158,8 @@ int main (void)
 				
 				break;
 				case 0x03:
-				//F_MoterBi = 0;
-				//MoterEn = 1;
+					F_MoterBi = 0;
+					MoterEn = 1;
 				break;
 
 				default:
@@ -167,14 +168,47 @@ int main (void)
 				break;
 				
 			}
+			
+			
+			if(T_AC_Cnt1 >= 1)
+			{
+				T_AC_Cnt1 = 0;
+				if(FSpeed==1)
+				T_AC_Cnt = 7;
+				else if(FSpeed==2)
+				T_AC_Cnt = 6;
+				else
+				T_AC_Cnt= 0;
+				//PORTC ^= (1 << PC3);
+			}
+			
+			
+		
+			if(T_AC_Cnt)
+			{
+				if(F_MoterBi==1)
+				PORTB |=(1 << PB1);
+				else
+				PORTB |=(1 << PB2);
+				
+			}else
+			{
+				PORTB &= ~(1 << PB1);
+				PORTB &= ~(1 << PB2);
+				
+			}
 		}
+		
+				
 
 		if(eeprom_en)
 		{
-			cli(); 
-			eeprom_write_byte( (uint8_t *)save_1, F_MoterBi); //  write the byte 64 to location 23 of the EEPROM
-			eeprom_en = 0;
-			sei();
+			
+			{
+				eeprom_write_byte( (uint8_t *)save_1, F_MoterBi); //  write the byte 64 to location 23 of the EEPROM
+				eeprom_en = 0;
+			}
+		
 		}
 		
 	}
@@ -235,26 +269,24 @@ void InputSwitch_PD3()
 			F_Switch_PD3 = 1;
 		else 
 			F_Switch_PD3 = 0;
-	
+
 		if(F_Switch_PD3 != PrePD3)
 		{
 			if(F_Switch_PD3)
 			{
-				if(F_MoterBi)
-				{
-					F_MoterBi = 0;
-					eeprom_en = 1;
-					time_delay=1;
-				}
-				else
-				{
-					F_MoterBi =1;
-					eeprom_en = 1;
-					time_delay=1;
-				}
+				// F_MoterBi = !F_MoterBi;    // F_MoterBi 값을 토글
+				eeprom_en = 1;             // EEPROM 동작 설정
+				time_delay = 1;            // 지연 시간 설정
+			
+				
+			}else 
+			{
+				F_MoterBi = !F_MoterBi;    // F_MoterBi 값을 토글
 			}
 			PrePD3 = F_Switch_PD3;
 		}
+
+		
 				
 }
 void InputSwitch_PD3_PD4()
@@ -283,9 +315,14 @@ void InputSwitch_PD3_PD4()
 		{
 			if(F_Switch_PD3)
 			{
-				F_MoterBi = 0;
+				
 				eeprom_en = 1;
 				time_delay=1;
+				
+			}
+			else
+			{
+				F_MoterBi = 0;
 				
 			}
 			PrePD3 = F_Switch_PD3;
@@ -295,9 +332,14 @@ void InputSwitch_PD3_PD4()
 		{
 			if(F_Switch_PD4)
 			{
-				F_MoterBi = 1;
+				
 				eeprom_en = 1;
 				time_delay=1;
+				
+			}
+			else
+			{
+				F_MoterBi = 1;
 				
 			}
 			PrePD4 = F_Switch_PD4;
@@ -332,7 +374,7 @@ void timer0_init(void)
 	sei();
 
 	// 타이머0 초기값 설정 (195)
-	TCNT0 = 238;//239;
+	TCNT0 = 239;//239;
 }
 
 // 타이머0 오버플로우 인터럽트 서비스 루틴
@@ -343,20 +385,11 @@ uint8_t time_100ms = 0;
 ISR(TIMER0_OVF_vect)
 {
 	// 타이머0 초기값 설정 (195)
-	TCNT0 = 238;
+	TCNT0 = 239;
 	if(T_AC_Cnt)
 	{
 		T_AC_Cnt--;
-		if(F_MoterBi==1)
-		PORTB |=(1 << PB1);
-		else
-		PORTB |=(1 << PB2);
 		
-		if(T_AC_Cnt ==0)
-		{
-			PORTB &= ~(1 << PB1);
-			PORTB &= ~(1 << PB2);
-		}
 	}
 	// 타이머 오버플로우 카운터 증가
 	timer_millis++;
@@ -393,16 +426,6 @@ ISR(INT0_vect)
 	//PORTC ^= (1 << PC3);
 	
 	T_AC_Cnt1++;
-	if(T_AC_Cnt1 > 2)
-	{
-		T_AC_Cnt1 = 0;
-		if(FSpeed==1)
-		T_AC_Cnt = 7;
-		else if(FSpeed==2)
-		T_AC_Cnt = 8;
-		else
-		T_AC_Cnt= 0;
-		//PORTC ^= (1 << PC3);
-	}
+
 	
 }
